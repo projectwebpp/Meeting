@@ -9,14 +9,13 @@ function getDB() {
             $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
         } catch (PDOException $e) {
             http_response_code(500);
-            echo json_encode(['success' => false, 'message' => 'Database connection failed']);
+            echo json_encode(['success' => false, 'message' => 'Database connection failed: ' . $e->getMessage()]);
             exit;
         }
     }
     return $pdo;
 }
 
-// ฟังก์ชันที่ใช้ร่วมกัน
 function getPrimaryUserId($lineUserId) {
     if (!$lineUserId) return null;
     $pdo = getDB();
