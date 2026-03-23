@@ -1,5 +1,4 @@
 <?php
-// กำหนด URL ของ API (เปลี่ยนให้ตรงกับโดเมนของคุณ)
 $apiBaseUrl = 'https://meeting-uuup.onrender.com/api.php';
 ?>
 <!DOCTYPE html>
