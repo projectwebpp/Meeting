@@ -1,5 +1,4 @@
 <?php
-// Load environment variables (if not set, use defaults)
 $dbHost = getenv('DB_HOST') ?: 'ep-morning-river-ani6mh5p-pooler.c-6.us-east-1.aws.neon.tech';
 $dbPort = getenv('DB_PORT') ?: '5432';
 $dbName = getenv('DB_NAME') ?: 'neondb';
