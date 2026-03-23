@@ -6,7 +6,7 @@ define('DB_PASS', 'npg_2u1rVjFdsNxX');
 
 // LINE configuration
 define('LINE_CHANNEL_ACCESS_TOKEN', 'gHB3k1CSgDBib+x4Xg9KAefpfBCM9KpB4geg8wA2mldyiJob7NUga7HkN/EmTwq976HRLEmjMCBpLBTqdhBVMs95OM+/HehMBdV0UIlDSlxCnBeOGJweMclWdbzJ8lYLIVsldOLaxaW6mvs/3PpVbAdB04t89/1O/w1cDnyilFU=');
-define('LINE_LIFF_ID', '2009198981-GsqxkwIK');
+define('LINE_LIFF_ID', '2001506774-XQoe74Ua');
 
 // Image upload directory (relative to script)
 define('UPLOAD_DIR', __DIR__ . '/uploads/');
