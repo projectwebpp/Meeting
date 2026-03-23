@@ -2,7 +2,6 @@
 require_once 'db.php';
 require_once 'config.php';
 
-// Enable CORS
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type');
@@ -56,37 +55,8 @@ try {
     jsonResponse(false, null, 'Server error: ' . $e->getMessage());
 }
 
-// ========== HELPER FUNCTIONS ==========
-function generateId($prefix) {
-    return $prefix . substr(strtoupper(uniqid()), -8);
-}
-
-function getPrimaryUserId($lineUserId) {
-    if (!$lineUserId) return null;
-    $pdo = getDB();
-    $stmt = $pdo->prepare("SELECT primary_user_id FROM user_links WHERE secondary_user_id = ? AND active = TRUE");
-    $stmt->execute([$lineUserId]);
-    $row = $stmt->fetch(PDO::FETCH_ASSOC);
-    return $row ? $row['primary_user_id'] : $lineUserId;
-}
-
-function getLinkedUserIds($primaryUserId) {
-    $pdo = getDB();
-    $ids = [$primaryUserId];
-    $stmt = $pdo->prepare("SELECT secondary_user_id FROM user_links WHERE primary_user_id = ? AND active = TRUE");
-    $stmt->execute([$primaryUserId]);
-    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-        $ids[] = $row['secondary_user_id'];
-    }
-    return $ids;
-}
-
-function linkUserIds($primary, $secondary, $source) {
-    if ($primary === $secondary) return false;
-    $pdo = getDB();
-    $stmt = $pdo->prepare("INSERT INTO user_links (primary_user_id, secondary_user_id, source, linked_at) VALUES (?, ?, ?, NOW()) ON CONFLICT (primary_user_id, secondary_user_id) DO NOTHING");
-    return $stmt->execute([$primary, $secondary, $source]);
-}
+// ========== Helper functions ==========
+function generateId($prefix) { return $prefix . substr(strtoupper(uniqid()), -8); }
 
 function isAdmin($lineUserId) {
     $pdo = getDB();
@@ -104,14 +74,6 @@ function isManager($lineUserId) {
     return $row && ($row['role'] === 'admin' || $row['role'] === 'manager');
 }
 
-function getUserRole($lineUserId) {
-    $pdo = getDB();
-    $stmt = $pdo->prepare("SELECT role FROM users WHERE line_user_id = ?");
-    $stmt->execute([$lineUserId]);
-    $row = $stmt->fetch(PDO::FETCH_ASSOC);
-    return $row ? $row['role'] : 'guest';
-}
-
 function createOrUpdateUser($lineUserId, $displayName, $pictureUrl, $email, $source = 'api') {
     $pdo = getDB();
     $now = date('Y-m-d H:i:s');
@@ -121,25 +83,27 @@ function createOrUpdateUser($lineUserId, $displayName, $pictureUrl, $email, $sou
     if ($user) {
         $stmt = $pdo->prepare("UPDATE users SET display_name = ?, picture_url = ?, email = ?, last_login = ?, updated_at = ?, last_interaction = ? WHERE line_user_id = ?");
         $stmt->execute([$displayName, $pictureUrl, $email, $now, $now, $now, $lineUserId]);
-        $user['display_name'] = $displayName;
-        $user['picture_url'] = $pictureUrl;
-        $user['email'] = $email;
         return $user;
     } else {
-        $stmt = $pdo->query("SELECT COUNT(*) as cnt FROM users");
-        $cnt = $stmt->fetch(PDO::FETCH_ASSOC)['cnt'];
+        $stmt = $pdo->query("SELECT COUNT(*) FROM users");
+        $cnt = $stmt->fetchColumn();
         $role = ($cnt == 0) ? 'admin' : 'user';
         $stmt = $pdo->prepare("INSERT INTO users (line_user_id, display_name, picture_url, email, role, last_login, created_at, updated_at, last_interaction, source, welcome_sent) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)");
         $stmt->execute([$lineUserId, $displayName, $pictureUrl, $email, $role, $now, $now, $now, $now, $source]);
-        return [
-            'line_user_id' => $lineUserId,
-            'display_name' => $displayName,
-            'picture_url' => $pictureUrl,
-            'email' => $email,
-            'role' => $role,
-            'created_at' => $now
-        ];
+        return ['line_user_id' => $lineUserId, 'display_name' => $displayName, 'picture_url' => $pictureUrl, 'email' => $email, 'role' => $role];
     }
+}
+
+function checkAvailability($roomId, $startTime, $endTime, $excludeBookingId = null) {
+    $pdo = getDB();
+    $sql = "SELECT * FROM bookings WHERE room_id = ? AND status IN ('pending','confirmed') 
+            AND (start_time < ? AND end_time > ? OR start_time < ? AND end_time > ? OR start_time >= ? AND start_time < ?)";
+    $params = [$roomId, $endTime, $startTime, $endTime, $startTime, $startTime, $endTime];
+    if ($excludeBookingId) { $sql .= " AND booking_id != ?"; $params[] = $excludeBookingId; }
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+    $conflicts = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    return ['available' => count($conflicts) === 0, 'conflicting' => $conflicts];
 }
 
 function sendFlexMessage($userId, $flexMessage) {
@@ -148,32 +112,13 @@ function sendFlexMessage($userId, $flexMessage) {
     $data = ['to' => $userId, 'messages' => [$flexMessage]];
     $ch = curl_init($url);
     curl_setopt($ch, CURLOPT_POST, true);
-    curl_setopt($ch, CURLOPT_HTTPHEADER, [
-        'Content-Type: application/json',
-        'Authorization: Bearer ' . LINE_CHANNEL_ACCESS_TOKEN
-    ]);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json', 'Authorization: Bearer ' . LINE_CHANNEL_ACCESS_TOKEN]);
     curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($data));
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    $response = curl_exec($ch);
-    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_exec($ch);
+    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
-    return $httpCode === 200;
-}
-
-function checkAvailability($roomId, $startTime, $endTime, $excludeBookingId = null) {
-    $pdo = getDB();
-    $sql = "SELECT * FROM bookings WHERE room_id = ? AND status IN ('pending','confirmed') 
-            AND (start_time < ? AND end_time > ? OR start_time < ? AND end_time > ? OR start_time >= ? AND start_time < ?)";
-    $params = [$roomId, $endTime, $startTime, $endTime, $startTime, $startTime, $endTime];
-    if ($excludeBookingId) {
-        $sql .= " AND booking_id != ?";
-        $params[] = $excludeBookingId;
-    }
-    $stmt = $pdo->prepare($sql);
-    $stmt->execute($params);
-    $conflicts = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    $available = count($conflicts) === 0;
-    return ['available' => $available, 'conflicting' => $conflicts];
+    return $code === 200;
 }
 
 function notifyAdminsNewBooking($booking) {
@@ -182,39 +127,29 @@ function notifyAdminsNewBooking($booking) {
     $stmt->execute();
     $admins = $stmt->fetchAll(PDO::FETCH_COLUMN);
     $flexMsg = createBookingFlexMessage($booking, 'new');
-    foreach ($admins as $adminId) {
-        sendFlexMessage($adminId, $flexMsg);
-    }
+    foreach ($admins as $adminId) sendFlexMessage($adminId, $flexMsg);
 }
 
 function createBookingFlexMessage($booking, $type = 'new') {
-    // Minimal example; you can expand with full Flex layout from original GAS
+    // Minimal version – you can expand later
     return [
         'type' => 'flex',
         'altText' => '📅 การจอง: ' . ($booking['title'] ?? ''),
         'contents' => [
             'type' => 'bubble',
-            'header' => [
-                'type' => 'box',
-                'layout' => 'vertical',
-                'contents' => [
-                    ['type' => 'text', 'text' => '📌 มีการจองใหม่', 'weight' => 'bold', 'size' => 'xl', 'color' => '#06c755']
-                ]
-            ],
-            'body' => [
-                'type' => 'box',
-                'layout' => 'vertical',
-                'contents' => [
-                    ['type' => 'text', 'text' => $booking['room_name'] ?? '', 'weight' => 'bold', 'size' => 'lg', 'color' => '#06c755'],
-                    ['type' => 'text', 'text' => $booking['title'] ?? '', 'size' => 'md', 'color' => '#666666', 'wrap' => true, 'margin' => 'md'],
-                    ['type' => 'separator', 'margin' => 'lg'],
-                ]
-            ]
+            'header' => ['type' => 'box', 'layout' => 'vertical', 'contents' => [['type' => 'text', 'text' => '📌 มีการจองใหม่', 'weight' => 'bold', 'size' => 'xl', 'color' => '#06c755']]],
+            'body' => ['type' => 'box', 'layout' => 'vertical', 'contents' => [
+                ['type' => 'text', 'text' => $booking['room_name'] ?? '', 'weight' => 'bold', 'size' => 'lg', 'color' => '#06c755'],
+                ['type' => 'text', 'text' => $booking['title'] ?? '', 'size' => 'md', 'color' => '#666666', 'wrap' => true],
+                ['type' => 'separator', 'margin' => 'lg'],
+                ['type' => 'text', 'text' => '👤 ผู้จอง: ' . ($booking['user_name'] ?? ''), 'size' => 'sm', 'color' => '#888888']
+            ]]
         ]
     ];
 }
 
-// ========== ENDPOINT HANDLERS ==========
+// ========== Endpoint handlers ==========
+
 function handleUserProfile() {
     $lineUserId = $_REQUEST['lineUserId'] ?? null;
     if (!$lineUserId) jsonResponse(false, null, 'Missing lineUserId');
@@ -230,8 +165,7 @@ function handleUserUpdate() {
     $lineUserId = $_REQUEST['lineUserId'] ?? null;
     if (!$lineUserId) jsonResponse(false, null, 'Missing lineUserId');
     $pdo = getDB();
-    $fields = [];
-    $params = [];
+    $fields = []; $params = [];
     if (isset($_REQUEST['phone'])) { $fields[] = "phone = ?"; $params[] = $_REQUEST['phone']; }
     if (isset($_REQUEST['department'])) { $fields[] = "department = ?"; $params[] = $_REQUEST['department']; }
     if (isset($_REQUEST['displayName'])) { $fields[] = "display_name = ?"; $params[] = $_REQUEST['displayName']; }
@@ -290,13 +224,8 @@ function handleRoomCreate() {
     $roomId = generateId('RM');
     $stmt = $pdo->prepare("INSERT INTO rooms (room_id, name, capacity, location, description, facilities, image_url, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'active', NOW(), NOW())");
     $stmt->execute([
-        $roomId,
-        $_REQUEST['name'] ?? '',
-        intval($_REQUEST['capacity'] ?? 0),
-        $_REQUEST['location'] ?? '',
-        $_REQUEST['description'] ?? '',
-        $_REQUEST['facilities'] ?? '',
-        $_REQUEST['imageUrl'] ?? ''
+        $roomId, $_REQUEST['name'] ?? '', intval($_REQUEST['capacity'] ?? 0), $_REQUEST['location'] ?? '',
+        $_REQUEST['description'] ?? '', $_REQUEST['facilities'] ?? '', $_REQUEST['imageUrl'] ?? ''
     ]);
     jsonResponse(true, ['roomId' => $roomId]);
 }
@@ -307,8 +236,7 @@ function handleRoomUpdate() {
     $roomId = $_REQUEST['roomId'] ?? null;
     if (!$roomId) jsonResponse(false, null, 'Missing roomId');
     $pdo = getDB();
-    $fields = [];
-    $params = [];
+    $fields = []; $params = [];
     if (isset($_REQUEST['name'])) { $fields[] = "name = ?"; $params[] = $_REQUEST['name']; }
     if (isset($_REQUEST['capacity'])) { $fields[] = "capacity = ?"; $params[] = intval($_REQUEST['capacity']); }
     if (isset($_REQUEST['location'])) { $fields[] = "location = ?"; $params[] = $_REQUEST['location']; }
@@ -337,9 +265,7 @@ function handleRoomDelete() {
 }
 
 function handleRoomUploadImage() {
-    if (!isset($_FILES['image']) || $_FILES['image']['error'] !== UPLOAD_ERR_OK) {
-        jsonResponse(false, null, 'No file uploaded');
-    }
+    if (!isset($_FILES['image']) || $_FILES['image']['error'] !== UPLOAD_ERR_OK) jsonResponse(false, null, 'No file uploaded');
     $ext = pathinfo($_FILES['image']['name'], PATHINFO_EXTENSION);
     $filename = uniqid() . '.' . $ext;
     $destination = UPLOAD_DIR . $filename;
@@ -355,21 +281,10 @@ function handleBookings() {
     $pdo = getDB();
     $sql = "SELECT * FROM bookings WHERE 1=1";
     $params = [];
-    if (isset($_REQUEST['roomId'])) {
-        $sql .= " AND room_id = ?";
-        $params[] = $_REQUEST['roomId'];
-    }
-    if (isset($_REQUEST['date'])) {
-        $sql .= " AND DATE(start_time) = ?";
-        $params[] = $_REQUEST['date'];
-    }
-    if (isset($_REQUEST['status'])) {
-        $sql .= " AND status = ?";
-        $params[] = $_REQUEST['status'];
-    }
-    if (!isset($_REQUEST['showPast']) || $_REQUEST['showPast'] !== 'true') {
-        $sql .= " AND end_time >= NOW()";
-    }
+    if (isset($_REQUEST['roomId'])) { $sql .= " AND room_id = ?"; $params[] = $_REQUEST['roomId']; }
+    if (isset($_REQUEST['date'])) { $sql .= " AND DATE(start_time) = ?"; $params[] = $_REQUEST['date']; }
+    if (isset($_REQUEST['status'])) { $sql .= " AND status = ?"; $params[] = $_REQUEST['status']; }
+    if (!isset($_REQUEST['showPast']) || $_REQUEST['showPast'] !== 'true') $sql .= " AND end_time >= NOW()";
     $sql .= " ORDER BY start_time";
     $stmt = $pdo->prepare($sql);
     $stmt->execute($params);
@@ -408,21 +323,13 @@ function handleBookingCreate() {
     $stmt = $pdo->prepare("INSERT INTO bookings (booking_id, room_id, room_name, user_id, original_user_id, user_name, title, description, start_time, end_time, attendees, meeting_link, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', NOW(), NOW())");
     $stmt->execute([
         $bookingId, $roomId, $roomName, $primaryId, $lineUserId,
-        $_REQUEST['userName'] ?? '',
-        $_REQUEST['title'] ?? 'การจองห้องประชุม',
-        $_REQUEST['description'] ?? '',
-        $startTime, $endTime,
-        intval($_REQUEST['attendees'] ?? 1),
-        $_REQUEST['meetingLink'] ?? ''
+        $_REQUEST['userName'] ?? '', $_REQUEST['title'] ?? 'การจองห้องประชุม', $_REQUEST['description'] ?? '',
+        $startTime, $endTime, intval($_REQUEST['attendees'] ?? 1), $_REQUEST['meetingLink'] ?? ''
     ]);
     if ($primaryId !== $lineUserId) linkUserIds($primaryId, $lineUserId, 'booking_create');
     $bookingData = [
-        'booking_id' => $bookingId,
-        'room_name' => $roomName,
-        'title' => $_REQUEST['title'] ?? '',
-        'start_time' => $startTime,
-        'end_time' => $endTime,
-        'user_name' => $_REQUEST['userName'] ?? '',
+        'booking_id' => $bookingId, 'room_name' => $roomName, 'title' => $_REQUEST['title'] ?? '',
+        'start_time' => $startTime, 'end_time' => $endTime, 'user_name' => $_REQUEST['userName'] ?? '',
         'attendees' => $_REQUEST['attendees'] ?? 1
     ];
     notifyAdminsNewBooking($bookingData);
@@ -448,22 +355,17 @@ function handleBookingUpdate() {
         $avail = checkAvailability($newRoomId, $newStart, $newEnd, $bookingId);
         if (!$avail['available']) jsonResponse(false, null, 'Selected time is not available');
     }
-    $fields = [];
-    $params = [];
+    $fields = []; $params = [];
     if (isset($_REQUEST['title'])) { $fields[] = "title = ?"; $params[] = $_REQUEST['title']; }
     if (isset($_REQUEST['description'])) { $fields[] = "description = ?"; $params[] = $_REQUEST['description']; }
     if (isset($_REQUEST['meetingLink'])) { $fields[] = "meeting_link = ?"; $params[] = $_REQUEST['meetingLink']; }
     if (isset($_REQUEST['attendees'])) { $fields[] = "attendees = ?"; $params[] = intval($_REQUEST['attendees']); }
     if (isset($_REQUEST['roomId'])) {
-        $fields[] = "room_id = ?";
-        $params[] = $_REQUEST['roomId'];
+        $fields[] = "room_id = ?"; $params[] = $_REQUEST['roomId'];
         $stmt2 = $pdo->prepare("SELECT name FROM rooms WHERE room_id = ?");
         $stmt2->execute([$_REQUEST['roomId']]);
         $newRoom = $stmt2->fetch(PDO::FETCH_ASSOC);
-        if ($newRoom) {
-            $fields[] = "room_name = ?";
-            $params[] = $newRoom['name'];
-        }
+        if ($newRoom) { $fields[] = "room_name = ?"; $params[] = $newRoom['name']; }
     }
     if (isset($_REQUEST['startTime'])) { $fields[] = "start_time = ?"; $params[] = $_REQUEST['startTime']; }
     if (isset($_REQUEST['endTime'])) { $fields[] = "end_time = ?"; $params[] = $_REQUEST['endTime']; }
@@ -520,6 +422,7 @@ function handleBookingReject() {
     if (!$lineUserId || !$bookingId) jsonResponse(false, null, 'Missing lineUserId or bookingId');
     if (!isManager($lineUserId)) jsonResponse(false, null, 'Unauthorized');
     $reason = $_REQUEST['reason'] ?? 'No reason provided';
+    $skipNotification = ($_REQUEST['skipNotification'] ?? 'false') === 'true';
     $pdo = getDB();
     $stmt = $pdo->prepare("SELECT * FROM bookings WHERE booking_id = ?");
     $stmt->execute([$bookingId]);
@@ -528,8 +431,10 @@ function handleBookingReject() {
     if ($booking['status'] !== 'pending') jsonResponse(false, null, 'Booking already processed');
     $stmt = $pdo->prepare("UPDATE bookings SET status = 'rejected', reject_reason = ?, rejected_at = NOW(), rejected_by = ?, updated_at = NOW() WHERE booking_id = ?");
     $stmt->execute([$reason, $lineUserId, $bookingId]);
-    $flexMsg = createBookingFlexMessage($booking, 'rejected');
-    sendFlexMessage($booking['user_id'], $flexMsg);
+    if (!$skipNotification) {
+        $flexMsg = createBookingFlexMessage($booking, 'rejected');
+        sendFlexMessage($booking['user_id'], $flexMsg);
+    }
     jsonResponse(true, null, 'Rejected');
 }
 
@@ -538,6 +443,7 @@ function handleBookingAdminCancel() {
     $bookingId = $_REQUEST['bookingId'] ?? null;
     if (!$lineUserId || !$bookingId) jsonResponse(false, null, 'Missing lineUserId or bookingId');
     if (!isManager($lineUserId)) jsonResponse(false, null, 'Unauthorized');
+    $skipNotification = ($_REQUEST['skipNotification'] ?? 'false') === 'true';
     $pdo = getDB();
     $stmt = $pdo->prepare("SELECT * FROM bookings WHERE booking_id = ?");
     $stmt->execute([$bookingId]);
@@ -546,8 +452,10 @@ function handleBookingAdminCancel() {
     if (!in_array($booking['status'], ['pending','confirmed'])) jsonResponse(false, null, 'Cannot cancel this booking');
     $stmt = $pdo->prepare("UPDATE bookings SET status = 'cancelled', cancelled_at = NOW(), cancelled_by = 'admin', updated_at = NOW() WHERE booking_id = ?");
     $stmt->execute([$bookingId]);
-    $flexMsg = createBookingFlexMessage($booking, 'admin_cancelled');
-    sendFlexMessage($booking['user_id'], $flexMsg);
+    if (!$skipNotification) {
+        $flexMsg = createBookingFlexMessage($booking, 'admin_cancelled');
+        sendFlexMessage($booking['user_id'], $flexMsg);
+    }
     jsonResponse(true, null, 'Booking cancelled by admin');
 }
 
@@ -650,8 +558,7 @@ function handleAdminSettingsUpdate() {
     $lineUserId = $_REQUEST['lineUserId'] ?? null;
     if (!isAdmin($lineUserId)) jsonResponse(false, null, 'Unauthorized');
     $pdo = getDB();
-    $fields = [];
-    $params = [];
+    $fields = []; $params = [];
     if (isset($_REQUEST['appName'])) { $fields[] = "app_name = ?"; $params[] = $_REQUEST['appName']; }
     if (isset($_REQUEST['requireApproval'])) { $fields[] = "require_approval = ?"; $params[] = ($_REQUEST['requireApproval'] === 'true' ? 1 : 0); }
     if (isset($_REQUEST['reminderMinutes'])) { $fields[] = "reminder_minutes = ?"; $params[] = intval($_REQUEST['reminderMinutes']); }
@@ -701,9 +608,7 @@ function handleNotificationsReadAll() {
 }
 
 function handleUploadImage() {
-    if (!isset($_FILES['file']) || $_FILES['file']['error'] !== UPLOAD_ERR_OK) {
-        jsonResponse(false, null, 'No file uploaded');
-    }
+    if (!isset($_FILES['file']) || $_FILES['file']['error'] !== UPLOAD_ERR_OK) jsonResponse(false, null, 'No file uploaded');
     $ext = pathinfo($_FILES['file']['name'], PATHINFO_EXTENSION);
     $filename = uniqid() . '.' . $ext;
     $destination = UPLOAD_DIR . $filename;
