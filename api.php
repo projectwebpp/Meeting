@@ -7,7 +7,22 @@ header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type');
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') exit;
 
-$path = $_REQUEST['path'] ?? '';
+// Get path from POST, GET, or REQUEST – handle both multipart/form-data and regular POST
+$path = '';
+if (isset($_POST['path'])) {
+    $path = $_POST['path'];
+} elseif (isset($_GET['path'])) {
+    $path = $_GET['path'];
+} elseif (isset($_REQUEST['path'])) {
+    $path = $_REQUEST['path'];
+} else {
+    // If still empty, check raw input (in case of JSON)
+    $raw = file_get_contents('php://input');
+    if ($raw) {
+        $data = json_decode($raw, true);
+        if (isset($data['path'])) $path = $data['path'];
+    }
+}
 
 function jsonResponse($success, $data = null, $message = '') {
     echo json_encode(['success' => $success, 'data' => $data, 'message' => $message]);
@@ -49,13 +64,13 @@ try {
         case 'uploadImage':          handleUploadImage(); break;
         case 'user/link':            handleUserLink(); break;
         case 'user/linked-ids':      handleUserLinkedIds(); break;
-        default: jsonResponse(false, null, 'Invalid path');
+        default: jsonResponse(false, null, 'Invalid path: ' . $path);
     }
 } catch (Exception $e) {
     jsonResponse(false, null, 'Server error: ' . $e->getMessage());
 }
 
-// ========== Helper functions ==========
+// ========== Helper functions (same as before) ==========
 function generateId($prefix) { return $prefix . substr(strtoupper(uniqid()), -8); }
 
 function isAdmin($lineUserId) {
@@ -148,8 +163,7 @@ function createBookingFlexMessage($booking, $type = 'new') {
     ];
 }
 
-// ========== Endpoint handlers ==========
-
+// ========== Endpoint handlers (same as before, but we'll include them for completeness) ==========
 function handleUserProfile() {
     $lineUserId = $_REQUEST['lineUserId'] ?? null;
     if (!$lineUserId) jsonResponse(false, null, 'Missing lineUserId');
