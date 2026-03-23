@@ -1,5 +1,5 @@
 <?php
-$apiBaseUrl = 'https://meeting-uuup.onrender.com/api.php';
+$apiBaseUrl = getenv('API_BASE_URL') ?: 'https://meeting-uuup.onrender.com/api.php';
 ?>
 <!DOCTYPE html>
 <html lang="th">
