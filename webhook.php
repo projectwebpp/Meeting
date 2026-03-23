@@ -42,7 +42,7 @@ function sendFlexMessage($userId, $flexMessage) {
 function createOrUpdateUserFromLine($userId, $source = 'bot') {
     $pdo = getDB();
     $now = date('Y-m-d H:i:s');
-    // ดึงโปรไฟล์จาก LINE API
+    // Get profile from LINE API
     $profile = null;
     $url = "https://api.line.me/v2/bot/profile/$userId";
     $ch = curl_init($url);
@@ -455,7 +455,7 @@ function sendDailySummary($userId, $date = null) {
     $pdo = getDB();
     $targetDate = $date ? new DateTime($date) : new DateTime();
     $dateStr = $targetDate->format('Y-m-d');
-    $thaiDate = $targetDate->format('d/m/Y');  // ใช้วันที่ไทยแบบง่าย
+    $thaiDate = $targetDate->format('d/m/Y'); // ใช้วันที่ไทยแบบง่าย
 
     $bookings = $pdo->prepare("SELECT * FROM bookings WHERE DATE(start_time) = ?");
     $bookings->execute([$dateStr]);
@@ -463,7 +463,6 @@ function sendDailySummary($userId, $date = null) {
 
     $rooms = $pdo->query("SELECT COUNT(*) FROM rooms WHERE status = 'active'")->fetchColumn();
     $totalRooms = $rooms ?: 0;
-    $usedRooms = count(array_unique(array_column($allBookings, 'room_id')));
     $totalBookings = count($allBookings);
     $pending = count(array_filter($allBookings, fn($b) => $b['status'] === 'pending'));
     $confirmed = count(array_filter($allBookings, fn($b) => $b['status'] === 'confirmed'));
