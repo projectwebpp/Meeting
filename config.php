@@ -13,4 +13,4 @@ define('UPLOAD_DIR', __DIR__ . '/uploads/');
 if (!is_dir(UPLOAD_DIR)) mkdir(UPLOAD_DIR, 0777, true);
 
 // Base URL for images (CHANGE THIS to your actual domain)
-define('BASE_URL', 'https://your-domain.com/api/');
+define('BASE_URL', 'https://meeting-uuup.onrender.com/api.php');
