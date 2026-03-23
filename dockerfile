@@ -9,8 +9,8 @@ RUN a2enmod rewrite
 # คัดลอกไฟล์ทั้งหมดไปยัง web root
 COPY . /var/www/html/
 
-# ตั้งค่าสิทธิ์ให้ uploads directory
-RUN chown -R www-data:www-data /var/www/html/uploads && chmod -R 755 /var/www/html/uploads
+# Create uploads directory and set permissions
+RUN mkdir -p /var/www/html/uploads && chown -R www-data:www-data /var/www/html/uploads && chmod -R 755 /var/www/html/uploads
 
 # เปิดพอร์ต 80
 EXPOSE 80
