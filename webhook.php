@@ -57,7 +57,6 @@ function createOrUpdateUserFromLine($userId, $source = 'bot') {
     $displayName = $profile['displayName'] ?? '';
     $pictureUrl = $profile['pictureUrl'] ?? '';
 
-    // ตรวจสอบว่ามีผู้ใช้อยู่แล้ว
     $stmt = $pdo->prepare("SELECT * FROM users WHERE line_user_id = ?");
     $stmt->execute([$userId]);
     $user = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -68,7 +67,6 @@ function createOrUpdateUserFromLine($userId, $source = 'bot') {
         $user['picture_url'] = $pictureUrl;
         return $user;
     } else {
-        // ตรวจสอบว่าเป็นผู้ใช้คนแรกหรือไม่ (กำหนดเป็น admin)
         $stmt = $pdo->query("SELECT COUNT(*) FROM users");
         $count = $stmt->fetchColumn();
         $role = ($count == 0) ? 'admin' : 'user';
@@ -345,7 +343,7 @@ function sendAvailableRoomsToday($userId) {
 
 function sendMyBookings($userId) {
     $pdo = getDB();
-    $primaryId = getPrimaryUserId($userId);  // ใช้ฟังก์ชันจาก db.php
+    $primaryId = getPrimaryUserId($userId);
     $linkedIds = getLinkedUserIds($primaryId);
     $placeholders = implode(',', array_fill(0, count($linkedIds), '?'));
     $stmt = $pdo->prepare("SELECT * FROM bookings WHERE user_id IN ($placeholders) ORDER BY start_time DESC LIMIT 10");
