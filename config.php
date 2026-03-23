@@ -5,7 +5,7 @@ define('DB_USER', 'neondb_owner');
 define('DB_PASS', 'npg_2u1rVjFdsNxX');
 
 // LINE configuration
-define('LINE_CHANNEL_ACCESS_TOKEN', 'gHB3k1CSgDBib+x4Xg9KAefpfBCM9KpB4geg8wA2mldyiJob7NUga7HkN/EmTwq976HRLEmjMCBpLBTqdhBVMs95OM+/HehMBdV0UIlDSlxCnBeOGJweMclWdbzJ8lYLIVsldOLaxaW6mvs/3PpVbAdB04t89/1O/w1cDnyilFU=');
+define('LINE_CHANNEL_ACCESS_TOKEN', '7aZdqWC4uaxtKyOq2PbyjusqU9rK5Lr7u5MvXRVYy5gMsMgYCBAJFzPV8kzORfHb0j7eWzwhbH7gFy6LDWKZjr81UUMdH97A5BmFCEyefzojforqdWuRWL+y34k9HBwormb7leCQAyqkU/Doia9LaQdB04t89/1O/w1cDnyilFU=');
 define('LINE_LIFF_ID', '2001506774-XQoe74Ua');
 
 // Image upload directory (relative to script)
