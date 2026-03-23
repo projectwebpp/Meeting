@@ -188,7 +188,7 @@ function notifyAdminsNewBooking($booking) {
 }
 
 function createBookingFlexMessage($booking, $type = 'new') {
-    // Minimal example; you can expand with full Flex layout
+    // Minimal example; you can expand with full Flex layout from original GAS
     return [
         'type' => 'flex',
         'altText' => '📅 การจอง: ' . ($booking['title'] ?? ''),
@@ -215,7 +215,6 @@ function createBookingFlexMessage($booking, $type = 'new') {
 }
 
 // ========== ENDPOINT HANDLERS ==========
-
 function handleUserProfile() {
     $lineUserId = $_REQUEST['lineUserId'] ?? null;
     if (!$lineUserId) jsonResponse(false, null, 'Missing lineUserId');
