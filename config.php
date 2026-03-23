@@ -12,5 +12,5 @@ define('LINE_LIFF_ID', '2009198981-GsqxkwIK');
 define('UPLOAD_DIR', __DIR__ . '/uploads/');
 if (!is_dir(UPLOAD_DIR)) mkdir(UPLOAD_DIR, 0777, true);
 
-// Base URL for images (adjust to your domain)
-define('BASE_URL', 'https://your-domain.com/api/'); // CHANGE THIS
+// Base URL for images (CHANGE THIS to your actual domain)
+define('BASE_URL', 'https://your-domain.com/api/');
